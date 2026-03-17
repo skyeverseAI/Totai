@@ -28,39 +28,52 @@ class MiaAssistant(Agent):
         super().__init__(instructions=prompt)
         self._last_user_text: str = ""
         self._last_response_time: float = 0.0
+        self._is_speaking: bool = False          # 🔒 speaking lock
 
     async def llm_node(self, chat_ctx, tools, model_settings):
-        # Deduplicate: skip if same user message processed within 3 seconds
+
+        # 🔒 Block if already speaking
+        if self._is_speaking:
+            logger.info("Skipped llm_node: agent is already speaking")
+            return
+
+        self._is_speaking = True
+
         try:
-            msgs = chat_ctx.messages() if callable(chat_ctx.messages) else list(chat_ctx.messages)
-            last_user_msg = ""
-            for msg in reversed(msgs):
-                if msg.role == "user":
-                    last_user_msg = str(msg.content) if msg.content else ""
-                    break
-
-            now = time.monotonic()
-            if (last_user_msg and
-                    last_user_msg == self._last_user_text and
-                    now - self._last_response_time < 3.0):
-                logger.info(f"Duplicate user turn suppressed: '{last_user_msg[:40]}'")
-                return
-
-            self._last_user_text = last_user_msg
-            self._last_response_time = now
-        except Exception as e:
-            logger.warning(f"Dedup check failed (non-critical): {e}")
-
-        # Stream LLM output to terminal in real-time
-        print("\n[LLM] ", end="", flush=True)
-        async for chunk in super().llm_node(chat_ctx, tools, model_settings):
+            # Deduplicate: skip if same user message processed within 5 seconds
             try:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    print(chunk.choices[0].delta.content, end="", flush=True)
-            except Exception:
-                pass
-            yield chunk
-        print()  # newline after full response
+                msgs = chat_ctx.messages() if callable(chat_ctx.messages) else list(chat_ctx.messages)
+                last_user_msg = ""
+                for msg in reversed(msgs):
+                    if msg.role == "user":
+                        last_user_msg = str(msg.content) if msg.content else ""
+                        break
+
+                now = time.monotonic()
+                if (last_user_msg and
+                        last_user_msg == self._last_user_text and
+                        now - self._last_response_time < 5.0):
+                    logger.info(f"Duplicate user turn suppressed: '{last_user_msg[:40]}'")
+                    return
+
+                self._last_user_text = last_user_msg
+                self._last_response_time = now
+            except Exception as e:
+                logger.warning(f"Dedup check failed (non-critical): {e}")
+
+            # Stream LLM output to terminal in real-time
+            print("\n[LLM] ", end="", flush=True)
+            async for chunk in super().llm_node(chat_ctx, tools, model_settings):
+                try:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        print(chunk.choices[0].delta.content, end="", flush=True)
+                except Exception:
+                    pass
+                yield chunk
+            print()  # newline after full response
+
+        finally:
+            self._is_speaking = False            # 🔒 always release lock
 
 
 async def _classify_outcome(transcript: str, groq_api_key: str, model: str) -> dict:
@@ -237,6 +250,9 @@ Only use these details if they have real values. Never say "Unknown" aloud.
         "PROSPECT_CONTEXT_PLACEHOLDER", context_block
     )
 
+    # Create agent instance — stored so silence monitor can check _is_speaking
+    agent_instance = MiaAssistant(prompt=dynamic_prompt)
+
     # Build agent session
     session = AgentSession(
         stt=sarvam.STT(
@@ -265,7 +281,7 @@ Only use these details if they have real values. Never say "Unknown" aloud.
 
     await session.start(
         room=ctx.room,
-        agent=MiaAssistant(prompt=dynamic_prompt),
+        agent=agent_instance,                    # 👈 use stored reference
         room_input_options=RoomInputOptions(
             close_on_disconnect=True,
         ),
@@ -299,25 +315,33 @@ Only use these details if they have real values. Never say "Unknown" aloud.
                 text = str(ev.content)
         return text.lower()
 
-    # ── SILENCE MONITOR: re-engage after 20s of no activity ───────
+    # ── SILENCE MONITOR ───────────────────────────────────────────
     _last_activity = [time.monotonic()]
     _silence_task: asyncio.Task = None
-    _silence_generating = [False]  # prevent concurrent generate_reply calls
+    _silence_generating = [False]
 
     async def silence_monitor():
+        # Grace period — don't fire during/after greeting
+        await asyncio.sleep(config.GREETING_GRACE_PERIOD_SECONDS)
+        logger.info("Silence monitor active")
+
         while True:
             await asyncio.sleep(1)
-            if time.monotonic() - _last_activity[0] > 20:
-                if _silence_generating[0]:
-                    continue  # already re-engaging, skip
+            if time.monotonic() - _last_activity[0] > config.SILENCE_THRESHOLD_SECONDS:
+
+                # 🔒 Don't fire if agent is already speaking or generating
+                if _silence_generating[0] or agent_instance._is_speaking:
+                    _last_activity[0] = time.monotonic()  # reset to avoid loop
+                    continue
+
                 _silence_generating[0] = True
-                _last_activity[0] = time.monotonic()  # reset to avoid repeated triggers
+                _last_activity[0] = time.monotonic()
                 logger.info("Silence detected — re-engaging prospect")
                 try:
                     await session.generate_reply(
                         instructions="The prospect has gone quiet. Say 'Hello, are you still there?' naturally and wait for their response."
                     )
-                    _last_activity[0] = time.monotonic()  # reset AFTER re-engagement TTS
+                    _last_activity[0] = time.monotonic()
                 except Exception as e:
                     logger.error(f"Re-engagement failed: {e}")
                 finally:
@@ -401,21 +425,18 @@ Only use these details if they have real values. Never say "Unknown" aloud.
             )
             logger.info("Call answered. Mia is speaking.")
 
-            # Start silence monitor now that call is live
+            # Start silence monitor AFTER call is answered
             _silence_task = asyncio.create_task(silence_monitor())
 
-            # Build dynamic greeting with actual cafe name
-            greeting = config.INITIAL_GREETING.replace(
-                "{cafe_name}", cafe_name if cafe_name else ""
-            )
+            # Send greeting
+            greeting = config.INITIAL_GREETING
             await session.generate_reply(instructions=greeting)
-            _last_activity[0] = time.monotonic()  # reset AFTER TTS completes
+            # Don't reset _last_activity here — on_agent_speech_committed handles it
 
         except Exception as e:
             logger.error(f"Call failed: {e}")
             if _silence_task:
                 _silence_task.cancel()
-            # Still fire post-call webhook so Airtable gets updated
             await _post_call("call_failed", session, ctx, phone_number, lead_data)
     else:
         logger.warning("No phone number in metadata. Skipping dial.")
