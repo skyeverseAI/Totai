@@ -1,0 +1,15 @@
+python-dotenv
+livekit
+livekit-agents
+livekit-plugins-openai
+livekit-plugins-deepgram
+livekit-plugins-silero
+livekit-plugins-sarvam
+livekit-plugins-turn-detector
+aiohttp
+httpx
+certifi
+fastapi
+uvicorn[standard]
+pydantic
+ 

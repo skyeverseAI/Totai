@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip show:*)",
+      "Bash(.venv/bin/pip show:*)",
+      "Bash(uv add:*)",
+      "Bash(.venv/bin/python3 -c \":*)",
+      "Bash(.venv/bin/python3 -c \"import agent\")",
+      "Bash(.venv/bin/python3 -c ':*)",
+      "Bash(grep -r TextTransforms /Users/samarnaama/Desktop/Dancing_cow/.venv/lib/python3.12/site-packages/livekit/agents/ --include=*.py -l)"
+    ]
+  }
+}

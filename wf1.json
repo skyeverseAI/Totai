@@ -1,0 +1,2901 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "livekit",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "32c2b1c1-c028-4243-a982-274c29a6e9f0",
+      "name": "VAPI End-of-Call Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1376,
+        240
+      ],
+      "webhookId": "vapi-end-of-call"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appcTWhNkmILnwWg8",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl2vBTRfaJAxqT9q",
+          "mode": "id"
+        },
+        "filterByFormula": "={Vapi_call_id} = '{{ $('Extract Call Data1').item.json.vapi_call_id }}'",
+        "options": {}
+      },
+      "id": "e8ad4434-f370-44f2-897f-01b739b02e5a",
+      "name": "Find Lead in Airtable",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        -720,
+        240
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "LJwhCVvgGGNgP3a4",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "merge-record-id",
+              "name": "record_id",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "merge-call-outcome",
+              "name": "Call_outcome",
+              "value": "={{ $('Extract Call Data1').item.json.Call_outcome }}",
+              "type": "string"
+            },
+            {
+              "id": "merge-sample-booked",
+              "name": "sample_booked",
+              "value": "={{ $('Extract Call Data1').item.json.sample_booked }}",
+              "type": "boolean"
+            },
+            {
+              "id": "merge-ai-summary",
+              "name": "ai_summary",
+              "value": "={{ $('Extract Call Data1').item.json.ai_summary }}",
+              "type": "string"
+            },
+            {
+              "id": "merge-scheduled-date",
+              "name": "Scheduled_date",
+              "value": "={{ $('Extract Call Data1').item.json.Scheduled_date }}",
+              "type": "string"
+            },
+            {
+              "id": "merge-key-objection",
+              "name": "key_objection",
+              "value": "={{ $('Extract Call Data1').item.json.key_objection }}",
+              "type": "string"
+            },
+            {
+              "id": "merge-transcript",
+              "name": "Transcript",
+              "value": "={{ $('Extract Call Data1').item.json.Transcript }}",
+              "type": "string"
+            },
+            {
+              "id": "merge-vapi-call-id",
+              "name": "vapi_call_id",
+              "value": "={{ $('Extract Call Data1').item.json.vapi_call_id }}",
+              "type": "string"
+            },
+            {
+              "id": "merge-cafe-name",
+              "name": "cafe_name",
+              "value": "={{ $json.Cafe_name || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "merge-phone",
+              "name": "phone",
+              "value": "={{ $json.phone || $('Extract Call Data1').item.json.customer_phone }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1a5e2ad3-bac2-45b6-ab59-28c125b896c0",
+      "name": "Merge Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -496,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.Call_outcome }}",
+                    "rightValue": "Hot_lead",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "e9662308-d1cf-4865-8d9e-455d00a52068"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "HOT_LEAD"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.Call_outcome }}",
+                    "rightValue": "Warm_lead",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "64c94c78-257c-4395-a2a0-9227d46b37cf"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "WARM_LEAD"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.Call_outcome }}",
+                    "rightValue": "Call_back",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "f9c432c7-023e-4c97-ad89-4c1cd6c3f1e1"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "CALLBACK_REQUESTED"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.Call_outcome }}",
+                    "rightValue": "Not_interested",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "74c2e6c9-b02c-42c7-bbdc-b18b590a9013"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "NOT_INTERESTED"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.Call_outcome }}",
+                    "rightValue": "Voice_mail",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "8cb81599-1066-43f3-8e2b-a536d61d0fcf"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "VOICEMAIL"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.Call_outcome }}",
+                    "rightValue": "Wrong_Number",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "0080aba8-120b-4efa-994b-b61170cdb433"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "WRONG_NUMBER"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5d3b2228-1997-4cb8-9cca-e9fc9bd3135c",
+      "name": "Route by Call_outcome",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -304,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appcTWhNkmILnwWg8",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl2vBTRfaJAxqT9q",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "sample_booked": "={{ $json.sample_booked }}",
+            "id": "={{ $json.record_id }}",
+            "Call_outcome": "={{ $json.Call_outcome }}",
+            "Status": "={{ $json.sample_booked == true ? 'FollowUp' : 'Called' }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Cafe_name",
+              "displayName": "Cafe_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "To_call",
+                  "value": "To_call"
+                },
+                {
+                  "name": "Calling",
+                  "value": "Calling"
+                },
+                {
+                  "name": "Callback",
+                  "value": "Callback"
+                },
+                {
+                  "name": "Not_interested",
+                  "value": "Not_interested"
+                },
+                {
+                  "name": "Invalid",
+                  "value": "Invalid"
+                },
+                {
+                  "name": "Called",
+                  "value": "Called"
+                },
+                {
+                  "name": "No_answer",
+                  "value": "No_answer"
+                },
+                {
+                  "name": "FollowUp",
+                  "value": "FollowUp"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "sample_booked",
+              "displayName": "sample_booked",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "owner_name",
+              "displayName": "owner_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "city",
+              "displayName": "city",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "prospect_type",
+              "displayName": "prospect_type",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Cafe",
+                  "value": "Cafe"
+                },
+                {
+                  "name": "Hotel",
+                  "value": "Hotel"
+                },
+                {
+                  "name": "Restaurant",
+                  "value": "Restaurant"
+                },
+                {
+                  "name": "Corporate",
+                  "value": "Corporate"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Scheduled_date",
+              "displayName": "Scheduled_date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "last_called",
+              "displayName": "last_called",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "call_count",
+              "displayName": "call_count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Vapi_call_id",
+              "displayName": "Vapi_call_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Call_outcome",
+              "displayName": "Call_outcome",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Hot_lead",
+                  "value": "Hot_lead"
+                },
+                {
+                  "name": "Warm_lead",
+                  "value": "Warm_lead"
+                },
+                {
+                  "name": "Call_back",
+                  "value": "Call_back"
+                },
+                {
+                  "name": "Info_sent",
+                  "value": "Info_sent"
+                },
+                {
+                  "name": "Not_interested",
+                  "value": "Not_interested"
+                },
+                {
+                  "name": "Voice_mail",
+                  "value": "Voice_mail"
+                },
+                {
+                  "name": "Wrong_Number",
+                  "value": "Wrong_Number"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Transcript",
+              "displayName": "Transcript",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_summary",
+              "displayName": "ai_summary",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "whatsapp_sent",
+              "displayName": "whatsapp_sent",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "key_objection",
+              "displayName": "key_objection",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "connected_count",
+              "displayName": "connected_count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "a64a5438-0cfe-4fba-9d35-378dc2d17842",
+      "name": "Update: HOT_LEAD",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "LJwhCVvgGGNgP3a4",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appcTWhNkmILnwWg8",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl2vBTRfaJAxqT9q",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.record_id }}",
+            "Call_outcome": "Warm_lead",
+            "Status": "Called"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Cafe_name",
+              "displayName": "Cafe_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "To_call",
+                  "value": "To_call"
+                },
+                {
+                  "name": "Calling",
+                  "value": "Calling"
+                },
+                {
+                  "name": "Callback",
+                  "value": "Callback"
+                },
+                {
+                  "name": "Not_interested",
+                  "value": "Not_interested"
+                },
+                {
+                  "name": "Invalid",
+                  "value": "Invalid"
+                },
+                {
+                  "name": "Called",
+                  "value": "Called"
+                },
+                {
+                  "name": "No_answer",
+                  "value": "No_answer"
+                },
+                {
+                  "name": "FollowUp",
+                  "value": "FollowUp"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "sample_booked",
+              "displayName": "sample_booked",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "owner_name",
+              "displayName": "owner_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "city",
+              "displayName": "city",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "prospect_type",
+              "displayName": "prospect_type",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Cafe",
+                  "value": "Cafe"
+                },
+                {
+                  "name": "Hotel",
+                  "value": "Hotel"
+                },
+                {
+                  "name": "Restaurant",
+                  "value": "Restaurant"
+                },
+                {
+                  "name": "Corporate",
+                  "value": "Corporate"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Scheduled_date",
+              "displayName": "Scheduled_date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "last_called",
+              "displayName": "last_called",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "call_count",
+              "displayName": "call_count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Vapi_call_id",
+              "displayName": "Vapi_call_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Call_outcome",
+              "displayName": "Call_outcome",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Hot_lead",
+                  "value": "Hot_lead"
+                },
+                {
+                  "name": "Warm_lead",
+                  "value": "Warm_lead"
+                },
+                {
+                  "name": "Call_back",
+                  "value": "Call_back"
+                },
+                {
+                  "name": "Info_sent",
+                  "value": "Info_sent"
+                },
+                {
+                  "name": "Not_interested",
+                  "value": "Not_interested"
+                },
+                {
+                  "name": "Voice_mail",
+                  "value": "Voice_mail"
+                },
+                {
+                  "name": "Wrong_Number",
+                  "value": "Wrong_Number"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Transcript",
+              "displayName": "Transcript",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_summary",
+              "displayName": "ai_summary",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "whatsapp_sent",
+              "displayName": "whatsapp_sent",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "key_objection",
+              "displayName": "key_objection",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "connected_count",
+              "displayName": "connected_count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "b976a439-376b-4f9e-9a6f-4739d5bcd399",
+      "name": "Update: WARM_LEAD",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        0,
+        176
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "LJwhCVvgGGNgP3a4",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appcTWhNkmILnwWg8",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl2vBTRfaJAxqT9q",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.record_id }}",
+            "Call_outcome": "Call_back",
+            "Status": "Callback",
+            "Scheduled_date": "={{ $json.Scheduled_date }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Cafe_name",
+              "displayName": "Cafe_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "To_call",
+                  "value": "To_call"
+                },
+                {
+                  "name": "Calling",
+                  "value": "Calling"
+                },
+                {
+                  "name": "Callback",
+                  "value": "Callback"
+                },
+                {
+                  "name": "Not_interested",
+                  "value": "Not_interested"
+                },
+                {
+                  "name": "Invalid",
+                  "value": "Invalid"
+                },
+                {
+                  "name": "Called",
+                  "value": "Called"
+                },
+                {
+                  "name": "No_answer",
+                  "value": "No_answer"
+                },
+                {
+                  "name": "FollowUp",
+                  "value": "FollowUp"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "sample_booked",
+              "displayName": "sample_booked",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "owner_name",
+              "displayName": "owner_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "city",
+              "displayName": "city",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "prospect_type",
+              "displayName": "prospect_type",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Cafe",
+                  "value": "Cafe"
+                },
+                {
+                  "name": "Hotel",
+                  "value": "Hotel"
+                },
+                {
+                  "name": "Restaurant",
+                  "value": "Restaurant"
+                },
+                {
+                  "name": "Corporate",
+                  "value": "Corporate"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Scheduled_date",
+              "displayName": "Scheduled_date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "last_called",
+              "displayName": "last_called",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "call_count",
+              "displayName": "call_count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Vapi_call_id",
+              "displayName": "Vapi_call_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Call_outcome",
+              "displayName": "Call_outcome",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Hot_lead",
+                  "value": "Hot_lead"
+                },
+                {
+                  "name": "Warm_lead",
+                  "value": "Warm_lead"
+                },
+                {
+                  "name": "Call_back",
+                  "value": "Call_back"
+                },
+                {
+                  "name": "Info_sent",
+                  "value": "Info_sent"
+                },
+                {
+                  "name": "Not_interested",
+                  "value": "Not_interested"
+                },
+                {
+                  "name": "Voice_mail",
+                  "value": "Voice_mail"
+                },
+                {
+                  "name": "Wrong_Number",
+                  "value": "Wrong_Number"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Transcript",
+              "displayName": "Transcript",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_summary",
+              "displayName": "ai_summary",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "whatsapp_sent",
+              "displayName": "whatsapp_sent",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "key_objection",
+              "displayName": "key_objection",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "connected_count",
+              "displayName": "connected_count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "0979a354-69d8-4fe2-97cb-c525994655f0",
+      "name": "Update: CALLBACK",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        0,
+        352
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "LJwhCVvgGGNgP3a4",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appcTWhNkmILnwWg8",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl2vBTRfaJAxqT9q",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.record_id }}",
+            "Call_outcome": "Not_interested",
+            "Status": "Not_interested"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Cafe_name",
+              "displayName": "Cafe_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "To_call",
+                  "value": "To_call"
+                },
+                {
+                  "name": "Calling",
+                  "value": "Calling"
+                },
+                {
+                  "name": "Callback",
+                  "value": "Callback"
+                },
+                {
+                  "name": "Not_interested",
+                  "value": "Not_interested"
+                },
+                {
+                  "name": "Invalid",
+                  "value": "Invalid"
+                },
+                {
+                  "name": "Called",
+                  "value": "Called"
+                },
+                {
+                  "name": "No_answer",
+                  "value": "No_answer"
+                },
+                {
+                  "name": "FollowUp",
+                  "value": "FollowUp"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "sample_booked",
+              "displayName": "sample_booked",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "owner_name",
+              "displayName": "owner_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "city",
+              "displayName": "city",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "prospect_type",
+              "displayName": "prospect_type",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Cafe",
+                  "value": "Cafe"
+                },
+                {
+                  "name": "Hotel",
+                  "value": "Hotel"
+                },
+                {
+                  "name": "Restaurant",
+                  "value": "Restaurant"
+                },
+                {
+                  "name": "Corporate",
+                  "value": "Corporate"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Scheduled_date",
+              "displayName": "Scheduled_date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "last_called",
+              "displayName": "last_called",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "call_count",
+              "displayName": "call_count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Vapi_call_id",
+              "displayName": "Vapi_call_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Call_outcome",
+              "displayName": "Call_outcome",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Hot_lead",
+                  "value": "Hot_lead"
+                },
+                {
+                  "name": "Warm_lead",
+                  "value": "Warm_lead"
+                },
+                {
+                  "name": "Call_back",
+                  "value": "Call_back"
+                },
+                {
+                  "name": "Info_sent",
+                  "value": "Info_sent"
+                },
+                {
+                  "name": "Not_interested",
+                  "value": "Not_interested"
+                },
+                {
+                  "name": "Voice_mail",
+                  "value": "Voice_mail"
+                },
+                {
+                  "name": "Wrong_Number",
+                  "value": "Wrong_Number"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Transcript",
+              "displayName": "Transcript",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_summary",
+              "displayName": "ai_summary",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "whatsapp_sent",
+              "displayName": "whatsapp_sent",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "key_objection",
+              "displayName": "key_objection",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "connected_count",
+              "displayName": "connected_count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "5f5dfeed-40f5-460e-8c86-37ae15c624d3",
+      "name": "Update: NOT_INTERESTED",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        0,
+        512
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "LJwhCVvgGGNgP3a4",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appcTWhNkmILnwWg8",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl2vBTRfaJAxqT9q",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.record_id }}",
+            "Status": "No_answer",
+            "Call_outcome": "Voice_mail"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Cafe_name",
+              "displayName": "Cafe_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "To_call",
+                  "value": "To_call"
+                },
+                {
+                  "name": "Calling",
+                  "value": "Calling"
+                },
+                {
+                  "name": "Callback",
+                  "value": "Callback"
+                },
+                {
+                  "name": "Not_interested",
+                  "value": "Not_interested"
+                },
+                {
+                  "name": "Invalid",
+                  "value": "Invalid"
+                },
+                {
+                  "name": "Called",
+                  "value": "Called"
+                },
+                {
+                  "name": "No_answer",
+                  "value": "No_answer"
+                },
+                {
+                  "name": "FollowUp",
+                  "value": "FollowUp"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "sample_booked",
+              "displayName": "sample_booked",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "owner_name",
+              "displayName": "owner_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "city",
+              "displayName": "city",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "prospect_type",
+              "displayName": "prospect_type",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Cafe",
+                  "value": "Cafe"
+                },
+                {
+                  "name": "Hotel",
+                  "value": "Hotel"
+                },
+                {
+                  "name": "Restaurant",
+                  "value": "Restaurant"
+                },
+                {
+                  "name": "Corporate",
+                  "value": "Corporate"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Scheduled_date",
+              "displayName": "Scheduled_date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "last_called",
+              "displayName": "last_called",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "call_count",
+              "displayName": "call_count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Vapi_call_id",
+              "displayName": "Vapi_call_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Call_outcome",
+              "displayName": "Call_outcome",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Hot_lead",
+                  "value": "Hot_lead"
+                },
+                {
+                  "name": "Warm_lead",
+                  "value": "Warm_lead"
+                },
+                {
+                  "name": "Call_back",
+                  "value": "Call_back"
+                },
+                {
+                  "name": "Info_sent",
+                  "value": "Info_sent"
+                },
+                {
+                  "name": "Not_interested",
+                  "value": "Not_interested"
+                },
+                {
+                  "name": "Voice_mail",
+                  "value": "Voice_mail"
+                },
+                {
+                  "name": "Wrong_Number",
+                  "value": "Wrong_Number"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Transcript",
+              "displayName": "Transcript",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_summary",
+              "displayName": "ai_summary",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "whatsapp_sent",
+              "displayName": "whatsapp_sent",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "key_objection",
+              "displayName": "key_objection",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "connected_count",
+              "displayName": "connected_count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "192e5438-fd94-4acd-80d4-e8147ebdfc30",
+      "name": "Update: VOICEMAIL",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        0,
+        672
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "LJwhCVvgGGNgP3a4",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appcTWhNkmILnwWg8",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl2vBTRfaJAxqT9q",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Invalid",
+            "Call_outcome": "Wrong_Number",
+            "id": "={{ $json.record_id }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Cafe_name",
+              "displayName": "Cafe_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "To_call",
+                  "value": "To_call"
+                },
+                {
+                  "name": "Calling",
+                  "value": "Calling"
+                },
+                {
+                  "name": "Callback",
+                  "value": "Callback"
+                },
+                {
+                  "name": "Not_interested",
+                  "value": "Not_interested"
+                },
+                {
+                  "name": "Invalid",
+                  "value": "Invalid"
+                },
+                {
+                  "name": "Called",
+                  "value": "Called"
+                },
+                {
+                  "name": "No_answer",
+                  "value": "No_answer"
+                },
+                {
+                  "name": "FollowUp",
+                  "value": "FollowUp"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "sample_booked",
+              "displayName": "sample_booked",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "owner_name",
+              "displayName": "owner_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "city",
+              "displayName": "city",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "prospect_type",
+              "displayName": "prospect_type",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Cafe",
+                  "value": "Cafe"
+                },
+                {
+                  "name": "Hotel",
+                  "value": "Hotel"
+                },
+                {
+                  "name": "Restaurant",
+                  "value": "Restaurant"
+                },
+                {
+                  "name": "Corporate",
+                  "value": "Corporate"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Scheduled_date",
+              "displayName": "Scheduled_date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "last_called",
+              "displayName": "last_called",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "call_count",
+              "displayName": "call_count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Vapi_call_id",
+              "displayName": "Vapi_call_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Call_outcome",
+              "displayName": "Call_outcome",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Hot_lead",
+                  "value": "Hot_lead"
+                },
+                {
+                  "name": "Warm_lead",
+                  "value": "Warm_lead"
+                },
+                {
+                  "name": "Call_back",
+                  "value": "Call_back"
+                },
+                {
+                  "name": "Info_sent",
+                  "value": "Info_sent"
+                },
+                {
+                  "name": "Not_interested",
+                  "value": "Not_interested"
+                },
+                {
+                  "name": "Voice_mail",
+                  "value": "Voice_mail"
+                },
+                {
+                  "name": "Wrong_Number",
+                  "value": "Wrong_Number"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Transcript",
+              "displayName": "Transcript",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "ai_summary",
+              "displayName": "ai_summary",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "whatsapp_sent",
+              "displayName": "whatsapp_sent",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "key_objection",
+              "displayName": "key_objection",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "connected_count",
+              "displayName": "connected_count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "6115cb23-c955-442e-ae38-20ea6b3e2a96",
+      "name": "Update: WRONG_NUMBER",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [
+        0,
+        832
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "LJwhCVvgGGNgP3a4",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "02f8dada-ce86-4f40-a975-692085c9e82e",
+              "leftValue": "={{ $json.body.status }}",
+              "rightValue": "COMPLETED",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1168,
+        240
+      ],
+      "id": "c84c919d-c976-444d-b5f4-f1a68605da66",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "OK",
+        "options": {}
+      },
+      "id": "04f12140-b354-4a96-ad71-747b791f2b1e",
+      "name": "Respond 200 OK1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1168,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "numberInputs": 6
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        384,
+        304
+      ],
+      "id": "50dd71c8-3235-4a36-a85c-7ddf7ad5ecd5",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appcTWhNkmILnwWg8",
+          "mode": "list",
+          "cachedResultName": "Dancing Cow Outbound",
+          "cachedResultUrl": "https://airtable.com/appcTWhNkmILnwWg8"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl2vBTRfaJAxqT9q",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://airtable.com/appcTWhNkmILnwWg8/tbl2vBTRfaJAxqT9q"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.id }}",
+            "Transcript": "={{ $('Merge Data').item.json.Transcript }}",
+            "ai_summary": "={{ $('Merge Data').item.json.ai_summary }}",
+            "key_objection": "={{ $('Merge Data').item.json.key_objection }}",
+            "last_called": "={{ new Date().toISOString() }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Cafe_name",
+              "displayName": "Cafe_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "To_call",
+                  "value": "To_call"
+                },
+                {
+                  "name": "Calling",
+                  "value": "Calling"
+                },
+                {
+                  "name": "Callback",
+                  "value": "Callback"
+                },
+                {
+                  "name": "Not_interested",
+                  "value": "Not_interested"
+                },
+                {
+                  "name": "Invalid",
+                  "value": "Invalid"
+                },
+                {
+                  "name": "Called",
+                  "value": "Called"
+                },
+                {
+                  "name": "No_answer",
+                  "value": "No_answer"
+                },
+                {
+                  "name": "FollowUp",
+                  "value": "FollowUp"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "sample_booked",
+              "displayName": "sample_booked",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "owner_name",
+              "displayName": "owner_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "city",
+              "displayName": "city",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "prospect_type",
+              "displayName": "prospect_type",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Cafe",
+                  "value": "Cafe"
+                },
+                {
+                  "name": "Hotel",
+                  "value": "Hotel"
+                },
+                {
+                  "name": "Restaurant",
+                  "value": "Restaurant"
+                },
+                {
+                  "name": "Corporate",
+                  "value": "Corporate"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Scheduled_date",
+              "displayName": "Scheduled_date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "last_called",
+              "displayName": "last_called",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "call_count",
+              "displayName": "call_count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Vapi_call_id",
+              "displayName": "Vapi_call_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Call_outcome",
+              "displayName": "Call_outcome",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Hot_lead",
+                  "value": "Hot_lead"
+                },
+                {
+                  "name": "Warm_lead",
+                  "value": "Warm_lead"
+                },
+                {
+                  "name": "Call_back",
+                  "value": "Call_back"
+                },
+                {
+                  "name": "Info_sent",
+                  "value": "Info_sent"
+                },
+                {
+                  "name": "Not_interested",
+                  "value": "Not_interested"
+                },
+                {
+                  "name": "Voice_mail",
+                  "value": "Voice_mail"
+                },
+                {
+                  "name": "Wrong_Number",
+                  "value": "Wrong_Number"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Transcript",
+              "displayName": "Transcript",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ai_summary",
+              "displayName": "ai_summary",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "whatsapp_sent",
+              "displayName": "whatsapp_sent",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "boolean",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "key_objection",
+              "displayName": "key_objection",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "connected_count",
+              "displayName": "connected_count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        592,
+        304
+      ],
+      "id": "b35060a3-cb50-4fbb-8c7c-de0eb703b774",
+      "name": "Update record",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "LJwhCVvgGGNgP3a4",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "call-id",
+              "name": "vapi_call_id",
+              "value": "={{ $json.body.call_id }}",
+              "type": "string"
+            },
+            {
+              "id": "call-outcome",
+              "name": "Call_outcome",
+              "value": "={{ $json.body.Call_outcome || 'Not_interested' }}",
+              "type": "string"
+            },
+            {
+              "id": "sample-booked",
+              "name": "sample_booked",
+              "value": "={{ $json.body.sample_booked === true }}",
+              "type": "boolean"
+            },
+            {
+              "id": "ai-summary",
+              "name": "ai_summary",
+              "value": "={{ $json.body.ai_summary || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "scheduled-date",
+              "name": "Scheduled_date",
+              "value": "={{ $json.body.Scheduled_date || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "key-objection",
+              "name": "key_objection",
+              "value": "={{ $json.body.key_objection || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "transcript",
+              "name": "Transcript",
+              "value": "={{ $json.body.transcript || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "customer-phone",
+              "name": "customer_phone",
+              "value": "={{ $json.body.phone || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "cafe-name",
+              "name": "cafe_name",
+              "value": "={{ $json.body.cafe_name || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "owner-name",
+              "name": "owner_name",
+              "value": "={{ $json.body.owner_name || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "city",
+              "name": "city",
+              "value": "={{ $json.body.city || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1bfc5983-52dc-441f-a66f-1a2f1460825c",
+      "name": "Extract Call Data1",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -912,
+        240
+      ]
+    }
+  ],
+  "connections": {
+    "VAPI End-of-Call Webhook": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond 200 OK1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Lead in Airtable": {
+      "main": [
+        [
+          {
+            "node": "Merge Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Data": {
+      "main": [
+        [
+          {
+            "node": "Route by Call_outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Call_outcome": {
+      "main": [
+        [
+          {
+            "node": "Update: HOT_LEAD",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update: WARM_LEAD",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update: CALLBACK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update: NOT_INTERESTED",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update: VOICEMAIL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update: WRONG_NUMBER",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update: HOT_LEAD": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update: WARM_LEAD": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Update: CALLBACK": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Update: NOT_INTERESTED": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Update: VOICEMAIL": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Update: WRONG_NUMBER": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 5
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Extract Call Data1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Update record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Call Data1": {
+      "main": [
+        [
+          {
+            "node": "Find Lead in Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "4ba183479babf546be90ac951d11e05ee27366edf93cc25020b49c8c6f5d5a3a"
+  }
+}
