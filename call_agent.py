@@ -8,11 +8,14 @@ import asyncio
 import aiohttp
 import httpx
 import time
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 from livekit import agents, api
-from livekit.agents import AgentSession, Agent, RoomInputOptions
-from livekit.plugins import openai, sarvam
+from livekit.agents import AgentSession, Agent
+from livekit.agents.voice.room_io import RoomOptions
+from livekit.plugins import openai, deepgram, elevenlabs
+# from livekit.plugins import openai, sarvam
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 load_dotenv(".env")
@@ -29,6 +32,7 @@ class MiaAssistant(Agent):
         self._last_user_text: str = ""
         self._last_response_time: float = 0.0
         self._is_speaking: bool = False          # 🔒 speaking lock
+        self.state: str = "greeting"             # greeting → intro → discovery → active
 
     async def llm_node(self, chat_ctx, tools, model_settings):
 
@@ -76,32 +80,70 @@ class MiaAssistant(Agent):
             self._is_speaking = False            # 🔒 always release lock
 
 
+def _is_valid_date(date_str: str) -> bool:
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+        return True
+    except:
+        return False
+
+
 async def _classify_outcome(transcript: str, groq_api_key: str, model: str) -> dict:
+    today = datetime.now().strftime('%Y-%m-%d')
+    tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+
     prompt = f"""
 You are analyzing a sales call transcript for Dancing Cow (Oatish oat milk).
 
 TRANSCRIPT:
 {transcript}
 
-Return ONLY a JSON object with these exact fields:
+Today's date: {today}
+
+CLASSIFICATION RULES:
+
+Hot_lead:
+- Prospect showed clear interest OR
+- Agreed to try/receive a sample OR
+- Asked for next steps
+
+sample_booked:
+- true ONLY if they explicitly agreed to receive or try a sample
+
+Warm_lead:
+- Some interest but no clear commitment
+
+Call_back:
+- Prospect asked to be contacted at a specific time or date
+
+Not_interested:
+- Clearly declined
+
+Voice_mail:
+- No human conversation
+
+Wrong_Number:
+- Wrong person
+
+SCHEDULED DATE RULES:
+- If prospect said "tomorrow" → use {tomorrow}
+- If prospect gave a specific date → convert to YYYY-MM-DD
+- If unclear (e.g., "next week", "later") → return empty string ""
+- If no callback requested → return empty string ""
+- NEVER return natural language dates
+
+STRICT OUTPUT FORMAT:
+Return ONLY this JSON:
 {{
   "Call_outcome": "Hot_lead" | "Warm_lead" | "Call_back" | "Not_interested" | "Voice_mail" | "Wrong_Number",
   "sample_booked": true | false,
   "ai_summary": "2-3 sentence summary of the call",
   "key_objection": "main objection raised or empty string",
-  "Scheduled_date": "ISO date if callback requested or empty string"
+  "Scheduled_date": "YYYY-MM-DD or empty string"
 }}
 
-Rules:
-- Hot_lead: showed clear interest OR agreed to sample
-- sample_booked: true only if they explicitly agreed to receive a sample
-- Warm_lead: some interest but no commitment
-- Call_back: asked to be called at specific time
-- Not_interested: clearly declined
-- Voice_mail: no human answered or voicemail picked up
-- Wrong_Number: wrong person or number
-
-Return ONLY the JSON. No explanation. No markdown.
+If unsure between Hot_lead and Warm_lead → choose Warm_lead.
+Return ONLY valid JSON. No explanation.
 """
     try:
         async with httpx.AsyncClient() as client:
@@ -124,7 +166,11 @@ Return ONLY the JSON. No explanation. No markdown.
                 content = content.split("```")[1]
                 if content.startswith("json"):
                     content = content[4:]
-            return json.loads(content.strip())
+            result = json.loads(content.strip())
+            # Validate Scheduled_date
+            if result.get("Scheduled_date") and not _is_valid_date(result["Scheduled_date"]):
+                result["Scheduled_date"] = ""
+            return result
     except Exception as e:
         logger.error(f"Outcome classification failed: {e}")
         return {
@@ -243,6 +289,9 @@ Contact Name: {owner_name}
 City: {city}
 Business Type: {prospect_type}
 
+This information is about the prospect only. It is NOT your location.
+Do NOT assume you are in the same city as the prospect.
+Do NOT offer to visit or meet in person.
 Only use these details if they have real values. Never say "Unknown" aloud.
 """
 
@@ -255,23 +304,34 @@ Only use these details if they have real values. Never say "Unknown" aloud.
 
     # Build agent session
     session = AgentSession(
-        stt=sarvam.STT(
-            model=config.STT_MODEL,
-            language=config.STT_LANGUAGE,
-            api_key=os.getenv("SARVAM_API_KEY"),
-            high_vad_sensitivity=False,
+        stt=deepgram.STT(
+            model=config.DEEPGRAM_STT_MODEL,
+            language=config.DEEPGRAM_STT_LANGUAGE,
+            api_key=os.getenv("DEEPGRAM_API_KEY"),
         ),
+        # stt=sarvam.STT(
+        #     model=config.STT_MODEL,
+        #     language=config.STT_LANGUAGE,
+        #     api_key=os.getenv("SARVAM_API_KEY"),
+        #     high_vad_sensitivity=False,
+        # ),
         llm=openai.LLM(
             base_url="https://openrouter.ai/api/v1",
             api_key=os.getenv("OPENROUTER_API_KEY"),
             model=config.LLM_MODEL,
             temperature=config.LLM_TEMPERATURE,
         ),
-        tts=sarvam.TTS(
-            model=config.SARVAM_MODEL,
-            speaker=config.SARVAM_VOICE,
-            target_language_code=config.SARVAM_LANGUAGE,
+        tts=elevenlabs.TTS(
+            voice_id=config.ELEVENLABS_VOICE_ID,
+            model=config.ELEVENLABS_MODEL,
+            api_key=os.getenv("ELEVEN_API_KEY"),
+            
         ),
+        # tts=sarvam.TTS(
+        #     model=config.SARVAM_MODEL,
+        #     speaker=config.SARVAM_VOICE,
+        #     target_language_code=config.SARVAM_LANGUAGE,
+        # ),
         turn_detection=MultilingualModel(),
         allow_interruptions=True,
         min_interruption_duration=0.5,
@@ -281,8 +341,8 @@ Only use these details if they have real values. Never say "Unknown" aloud.
 
     await session.start(
         room=ctx.room,
-        agent=agent_instance,                    # 👈 use stored reference
-        room_input_options=RoomInputOptions(
+        agent=agent_instance,
+        room_options=RoomOptions(
             close_on_disconnect=True,
         ),
     )
@@ -306,6 +366,12 @@ Only use these details if they have real values. Never say "Unknown" aloud.
         "dhanyavaad", "shukriya", "accha theek hai", "bilkul theek hai",
     ]
 
+    # Hard exit signals — immediate hang-up, no goodbye
+    EXIT_SIGNALS = [
+        "not interested", "don't call", "remove my number",
+        "bilkul nahi chahiye", "band karo",
+    ]
+
     def _extract_text(ev):
         text = ""
         if hasattr(ev, 'content'):
@@ -314,6 +380,31 @@ Only use these details if they have real values. Never say "Unknown" aloud.
             else:
                 text = str(ev.content)
         return text.lower()
+
+    # ── STATE-CHAIN HELPER ─────────────────────────────────────────
+    async def _handle_state_chain():
+        if agent_instance.state == "greeting":
+            agent_instance.state = "intro"
+            await asyncio.sleep(0.4)          # give user a chance to interrupt
+            if agent_instance._is_speaking:
+                await asyncio.sleep(0.4)
+                if agent_instance._is_speaking:
+                    logger.info("Dropping chained reply — still speaking")
+                    return
+            asyncio.create_task(session.generate_reply(
+                instructions="Introduce yourself as Mia from Dancing Cow and mention you'll be brief. One sentence."
+            ))
+        elif agent_instance.state == "intro":
+            agent_instance.state = "discovery"
+            await asyncio.sleep(0.4)          # give user a chance to interrupt
+            if agent_instance._is_speaking:
+                await asyncio.sleep(0.4)
+                if agent_instance._is_speaking:
+                    logger.info("Dropping chained reply — still speaking")
+                    return
+            asyncio.create_task(session.generate_reply(
+                instructions="Ask a natural question about whether they use plant-based milk. One question only."
+            ))
 
     # ── SILENCE MONITOR ───────────────────────────────────────────
     _last_activity = [time.monotonic()]
@@ -351,9 +442,15 @@ Only use these details if they have real values. Never say "Unknown" aloud.
         try:
             _last_activity[0] = time.monotonic()
             text = _extract_text(ev)
+
+            # State chaining — fires at the TOP before any other logic
+            asyncio.create_task(_handle_state_chain())
+
+            # Polite goodbye → hang up
             if any(phrase in text for phrase in end_phrases):
-                logger.info(f"Agent end phrase detected: '{text[:50]}' — hanging up in 3s")
+                logger.info(f"Agent end phrase: '{text[:50]}' — hanging up in 3s")
                 asyncio.create_task(_hang_up(3))
+
         except Exception as e:
             logger.error(f"Error in agent speech committed handler: {e}")
 
@@ -361,14 +458,39 @@ Only use these details if they have real values. Never say "Unknown" aloud.
         try:
             text = _extract_text(ev)
             stripped = text.strip()
-            _last_activity[0] = time.monotonic()  # always reset, even for short speech
+            _last_activity[0] = time.monotonic()
+
+            # 🔒 Don't process if agent is already speaking
+            if agent_instance._is_speaking:
+                logger.info("User spoke while agent speaking — ignoring")
+                return
+
+            # User interrupted opening — jump straight to active mode
+            if agent_instance.state in ["greeting", "intro"]:
+                agent_instance.state = "active"
+                logger.info("User interrupted opening — switching to active mode")
+
+            # Discovery → active once user gives a real reply
+            if agent_instance.state == "discovery":
+                if len(stripped.split()) >= 2:
+                    agent_instance.state = "active"
+
             word_count = len(stripped.split())
             if word_count < 2:
                 logger.info(f"Too short to process ({word_count} words): '{stripped}'")
                 return
+
+            # Hard exit signals → immediate hang-up
+            if any(signal in stripped for signal in EXIT_SIGNALS):
+                logger.info(f"Exit signal: '{stripped[:50]}' — hanging up immediately")
+                asyncio.create_task(_hang_up(1))
+                return
+
+            # Polite goodbye → hang up with delay
             if any(phrase in stripped for phrase in end_phrases):
-                logger.info(f"Customer end phrase detected: '{stripped[:50]}' — hanging up in 3s")
+                logger.info(f"Customer end phrase: '{stripped[:50]}' — hanging up in 3s")
                 asyncio.create_task(_hang_up(3))
+
         except Exception as e:
             logger.error(f"Error in user speech committed handler: {e}")
 
@@ -428,10 +550,16 @@ Only use these details if they have real values. Never say "Unknown" aloud.
             # Start silence monitor AFTER call is answered
             _silence_task = asyncio.create_task(silence_monitor())
 
-            # Send greeting
-            greeting = config.INITIAL_GREETING
-            await session.generate_reply(instructions=greeting)
-            # Don't reset _last_activity here — on_agent_speech_committed handles it
+            # ── STATE-CHAINED OPENING ──────────────────────────────
+            agent_instance.state = "greeting"
+            await session.generate_reply(
+                instructions=(
+                    f"Ask if you are speaking with {owner_name}. One sentence only."
+                    if owner_name else
+                    "Introduce yourself as Mia from Dancing Cow and mention you'll be brief. One sentence only."
+                )
+            )
+            # on_agent_speech_committed will chain → intro → discovery
 
         except Exception as e:
             logger.error(f"Call failed: {e}")
