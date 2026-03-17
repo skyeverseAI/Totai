@@ -14,10 +14,16 @@ SIP_DOMAIN = os.getenv("VOBIZ_SIP_DOMAIN", "")
 MAX_CALL_DURATION_SECONDS = 240  # 4 minutes hard cutoff
 
 # ─────────────────────────────────────────────
-#  STT — Sarvam Saaras v3 (Hinglish / hi-IN)
+#  STT — Deepgram Nova-3
 # ─────────────────────────────────────────────
-STT_MODEL = "saaras:v3"
-STT_LANGUAGE = "hi-IN"
+DEEPGRAM_STT_MODEL    = "nova-3"
+DEEPGRAM_STT_LANGUAGE = "hi"   # Hindi; nova-3 handles Hinglish code-switching
+
+# # ─────────────────────────────────────────────
+# #  STT — Sarvam Saaras v3 (Hinglish / hi-IN)
+# # ─────────────────────────────────────────────
+# STT_MODEL = "saaras:v3"
+# STT_LANGUAGE = "hi-IN"
 
 # ─────────────────────────────────────────────
 #  LLM — OpenRouter (GPT-4.1)
@@ -28,11 +34,17 @@ GROQ_MODEL = "llama-3.3-70b-versatile"  # used only for post-call classification
 GROQ_TEMPERATURE = 0.0  # classification needs deterministic output
 
 # ─────────────────────────────────────────────
-#  TTS — Sarvam Bulbul v3 (Ishita, Indian female)
+#  TTS — ElevenLabs
 # ─────────────────────────────────────────────
-SARVAM_MODEL    = "bulbul:v3"
-SARVAM_VOICE    = "simran"
-SARVAM_LANGUAGE = "hi-IN"
+ELEVENLABS_VOICE_ID = "E9bHjADK0eauP3K4c8xy"  # Neha - Messy and Relatable (Indian)
+ELEVENLABS_MODEL    = "eleven_turbo_v2_5"
+
+# # ─────────────────────────────────────────────
+# #  TTS — Sarvam Bulbul v3 (Ishita, Indian female)
+# # ─────────────────────────────────────────────
+# SARVAM_MODEL    = "bulbul:v3"
+# SARVAM_VOICE    = "simran"
+# SARVAM_LANGUAGE = "hi-IN"
 
 # ─────────────────────────────────────────────
 #  SILENCE MONITOR
@@ -197,9 +209,6 @@ Then STOP. Do not add any sentence after this line.
 # ─────────────────────────────────────────────
 INITIAL_GREETING = """
 The prospect has just picked up the call.
-Follow the OPENING instructions in the system prompt exactly.
-If the prospect name is available, start with "Hi, is this [name]?"
-If not, start with "Hi, this is Mia from Dancing Cow — I'll keep it very short."
-Then ask: "Just curious — do you currently use oat milk or any plant-based milk?"
-Maximum 2 sentences. English only. Do not use Hindi in the opening.
+Say one sentence only — exactly as instructed. Do not add anything else.
+English only. Do not use Hindi in the opening.
 """
