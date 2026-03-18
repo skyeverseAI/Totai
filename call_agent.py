@@ -347,14 +347,11 @@ def build_tts():
 
 
 def build_llm():
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    # Log the key presence and the model we are calling
-    logger.info(f"LLM Init: Model={config.LLM_MODEL} | Key exists={bool(api_key)}")
-
+    logger.info(f"LLM: {config.LLM_PROVIDER} | {config.LLM_MODEL}")
     return openai.LLM(
         model=config.LLM_MODEL,
-        api_key=api_key,
-        base_url="https://openrouter.ai/api/v1",
+        api_key=config.LLM_API_KEY,
+        base_url=config.LLM_BASE_URL,
         temperature=config.LLM_TEMPERATURE,
     )
 
@@ -546,6 +543,8 @@ Only use these details if they have real values. Never say "Unknown" aloud.
             # Polite goodbye → hang up with delay (before word count filter)
             if _is_ending(stripped):
                 logger.info(f"Customer end phrase: '{stripped[:50]}' — hanging up in 3s")
+                if _silence_task:
+                    _silence_task.cancel()
                 asyncio.create_task(_hang_up(3))
                 return
 

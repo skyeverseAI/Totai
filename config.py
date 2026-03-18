@@ -32,10 +32,26 @@ SARVAM_STT_MODEL    = "saaras:v3"
 SARVAM_STT_LANGUAGE = "hi-IN"
 
 # ─────────────────────────────────────────────
-#  LLM — OpenRouter
+#  LLM — Provider Selection
 # ─────────────────────────────────────────────
-LLM_MODEL = os.getenv("LLM_MODEL", "openai/gpt-4.1-mini")
-LLM_TEMPERATURE = 0.3
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openrouter")
+_llm_providers = {
+    "openrouter": {
+        "api_key": os.getenv("OPENROUTER_API_KEY", ""),
+        "base_url": os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+        "model":   os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini"),
+    },
+    "groq": {
+        "api_key": os.getenv("GROQ_API_KEY", ""),
+        "base_url": os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
+        "model":   os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+    },
+}
+_llm = _llm_providers.get(LLM_PROVIDER, _llm_providers["openrouter"])
+LLM_API_KEY  = _llm["api_key"]
+LLM_BASE_URL = _llm["base_url"]
+LLM_MODEL    = _llm["model"]
+LLM_TEMPERATURE = 0.5
 GROQ_MODEL = "llama-3.3-70b-versatile"  # used only for post-call classification
 GROQ_TEMPERATURE = 0.0  # classification needs deterministic output
 
@@ -56,7 +72,7 @@ SARVAM_TTS_LANGUAGE = "hi-IN"
 #  SILENCE MONITOR
 # ─────────────────────────────────────────────
 GREETING_GRACE_PERIOD_SECONDS = 20   # silence monitor waits this long after call starts
-SILENCE_THRESHOLD_SECONDS     = 35   # re-engage after this many seconds of silence
+SILENCE_THRESHOLD_SECONDS     = 27   # re-engage after this many seconds of silence
 
 # ─────────────────────────────────────────────
 #  MIA — SYSTEM PROMPT
