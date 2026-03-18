@@ -14,21 +14,27 @@ SIP_DOMAIN = os.getenv("VOBIZ_SIP_DOMAIN", "")
 MAX_CALL_DURATION_SECONDS = 240  # 4 minutes hard cutoff
 
 # ─────────────────────────────────────────────
+#  PROVIDER SELECTION (set via .env)
+# ─────────────────────────────────────────────
+STT_PROVIDER = os.getenv("STT_PROVIDER", "sarvam")      # options: sarvam, deepgram
+TTS_PROVIDER = os.getenv("TTS_PROVIDER", "sarvam")      # options: sarvam, elevenlabs
+
+# ─────────────────────────────────────────────
 #  STT — Deepgram Nova-3
 # ─────────────────────────────────────────────
 DEEPGRAM_STT_MODEL    = "nova-3"
 DEEPGRAM_STT_LANGUAGE = "hi"   # Hindi; nova-3 handles Hinglish code-switching
 
-# # ─────────────────────────────────────────────
-# #  STT — Sarvam Saaras v3 (Hinglish / hi-IN)
-# # ─────────────────────────────────────────────
-# STT_MODEL = "saaras:v3"
-# STT_LANGUAGE = "hi-IN"
+# ─────────────────────────────────────────────
+#  STT — Sarvam Saaras v3 (Hinglish / hi-IN)
+# ─────────────────────────────────────────────
+SARVAM_STT_MODEL    = "saaras:v3"
+SARVAM_STT_LANGUAGE = "hi-IN"
 
 # ─────────────────────────────────────────────
-#  LLM — OpenRouter (GPT-4.1)
+#  LLM — OpenRouter
 # ─────────────────────────────────────────────
-LLM_MODEL = "openai/gpt-4.1"
+LLM_MODEL = os.getenv("LLM_MODEL", "openai/gpt-4.1-mini")
 LLM_TEMPERATURE = 0.3
 GROQ_MODEL = "llama-3.3-70b-versatile"  # used only for post-call classification
 GROQ_TEMPERATURE = 0.0  # classification needs deterministic output
@@ -39,12 +45,12 @@ GROQ_TEMPERATURE = 0.0  # classification needs deterministic output
 ELEVENLABS_VOICE_ID = "E9bHjADK0eauP3K4c8xy"  # Neha - Messy and Relatable (Indian)
 ELEVENLABS_MODEL    = "eleven_turbo_v2_5"
 
-# # ─────────────────────────────────────────────
-# #  TTS — Sarvam Bulbul v3 (Ishita, Indian female)
-# # ─────────────────────────────────────────────
-# SARVAM_MODEL    = "bulbul:v3"
-# SARVAM_VOICE    = "simran"
-# SARVAM_LANGUAGE = "hi-IN"
+# ─────────────────────────────────────────────
+#  TTS — Sarvam Bulbul v3 (Ishita, Indian female)
+# ─────────────────────────────────────────────
+SARVAM_TTS_MODEL    = "bulbul:v3"
+SARVAM_TTS_VOICE    = "simran"
+SARVAM_TTS_LANGUAGE = "hi-IN"
 
 # ─────────────────────────────────────────────
 #  SILENCE MONITOR

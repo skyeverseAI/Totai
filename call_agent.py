@@ -14,8 +14,7 @@ from dotenv import load_dotenv
 from livekit import agents, api
 from livekit.agents import AgentSession, Agent
 from livekit.agents.voice.room_io import RoomOptions
-from livekit.plugins import openai, deepgram, elevenlabs
-# from livekit.plugins import openai, sarvam
+from livekit.plugins import openai, deepgram, elevenlabs, sarvam
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 load_dotenv(".env")
@@ -250,6 +249,53 @@ async def _post_call(reason, session, ctx, phone_number, lead_data):
         logger.error(f"Webhook failed: {e}")
 
 
+# ── PROVIDER FACTORIES ────────────────────────────────────────────
+
+def build_stt():
+    if config.STT_PROVIDER == "deepgram":
+        logger.info("STT: Deepgram nova-3")
+        return deepgram.STT(
+            model=config.DEEPGRAM_STT_MODEL,
+            language=config.DEEPGRAM_STT_LANGUAGE,
+            api_key=os.getenv("DEEPGRAM_API_KEY"),
+        )
+    else:
+        logger.info("STT: Sarvam saaras:v3")
+        return sarvam.STT(
+            model=config.SARVAM_STT_MODEL,
+            language=config.SARVAM_STT_LANGUAGE,
+            api_key=os.getenv("SARVAM_API_KEY"),
+            high_vad_sensitivity=False,
+        )
+
+
+def build_tts():
+    if config.TTS_PROVIDER == "elevenlabs":
+        logger.info(f"TTS: ElevenLabs {config.ELEVENLABS_MODEL}")
+        return elevenlabs.TTS(
+            voice_id=config.ELEVENLABS_VOICE_ID,
+            model=config.ELEVENLABS_MODEL,
+            api_key=os.getenv("ELEVEN_API_KEY"),
+        )
+    else:
+        logger.info("TTS: Sarvam bulbul:v3")
+        return sarvam.TTS(
+            model=config.SARVAM_TTS_MODEL,
+            speaker=config.SARVAM_TTS_VOICE,
+            target_language_code=config.SARVAM_TTS_LANGUAGE,
+        )
+
+
+def build_llm():
+    logger.info(f"LLM: {config.LLM_MODEL}")
+    return openai.LLM(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=os.getenv("OPENROUTER_API_KEY"),
+        model=config.LLM_MODEL,
+        temperature=config.LLM_TEMPERATURE,
+    )
+
+
 async def entrypoint(ctx: agents.JobContext):
     logger.info(f"Room: {ctx.room.name}")
 
@@ -304,34 +350,9 @@ Only use these details if they have real values. Never say "Unknown" aloud.
 
     # Build agent session
     session = AgentSession(
-        stt=deepgram.STT(
-            model=config.DEEPGRAM_STT_MODEL,
-            language=config.DEEPGRAM_STT_LANGUAGE,
-            api_key=os.getenv("DEEPGRAM_API_KEY"),
-        ),
-        # stt=sarvam.STT(
-        #     model=config.STT_MODEL,
-        #     language=config.STT_LANGUAGE,
-        #     api_key=os.getenv("SARVAM_API_KEY"),
-        #     high_vad_sensitivity=False,
-        # ),
-        llm=openai.LLM(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=os.getenv("OPENROUTER_API_KEY"),
-            model=config.LLM_MODEL,
-            temperature=config.LLM_TEMPERATURE,
-        ),
-        tts=elevenlabs.TTS(
-            voice_id=config.ELEVENLABS_VOICE_ID,
-            model=config.ELEVENLABS_MODEL,
-            api_key=os.getenv("ELEVEN_API_KEY"),
-            
-        ),
-        # tts=sarvam.TTS(
-        #     model=config.SARVAM_MODEL,
-        #     speaker=config.SARVAM_VOICE,
-        #     target_language_code=config.SARVAM_LANGUAGE,
-        # ),
+        stt=build_stt(),
+        llm=build_llm(),
+        tts=build_tts(),
         turn_detection=MultilingualModel(),
         allow_interruptions=True,
         min_interruption_duration=0.5,
@@ -364,6 +385,8 @@ Only use these details if they have real values. Never say "Unknown" aloud.
         "thanks for your time", "talk to you soon", "really appreciate it",
         "bye", "ok bye", "okay bye", "alvida", "theek hai bye",
         "dhanyavaad", "shukriya", "accha theek hai", "bilkul theek hai",
+        "बाय", "ओके बाय", "अलविदा", "धन्यवाद", "शुक्रिया",
+        "ठीक है बाय", "बाय बाय", "थैंक यू",
     ]
 
     # Hard exit signals — immediate hang-up, no goodbye
@@ -465,6 +488,18 @@ Only use these details if they have real values. Never say "Unknown" aloud.
                 logger.info("User spoke while agent speaking — ignoring")
                 return
 
+            # Hard exit signals → immediate hang-up (before word count filter)
+            if any(signal in stripped for signal in EXIT_SIGNALS):
+                logger.info(f"Exit signal: '{stripped[:50]}' — hanging up immediately")
+                asyncio.create_task(_hang_up(1))
+                return
+
+            # Polite goodbye → hang up with delay (before word count filter)
+            if any(phrase in stripped for phrase in end_phrases):
+                logger.info(f"Customer end phrase: '{stripped[:50]}' — hanging up in 3s")
+                asyncio.create_task(_hang_up(3))
+                return
+
             # User interrupted opening — jump straight to active mode
             if agent_instance.state in ["greeting", "intro"]:
                 agent_instance.state = "active"
@@ -479,17 +514,6 @@ Only use these details if they have real values. Never say "Unknown" aloud.
             if word_count < 2:
                 logger.info(f"Too short to process ({word_count} words): '{stripped}'")
                 return
-
-            # Hard exit signals → immediate hang-up
-            if any(signal in stripped for signal in EXIT_SIGNALS):
-                logger.info(f"Exit signal: '{stripped[:50]}' — hanging up immediately")
-                asyncio.create_task(_hang_up(1))
-                return
-
-            # Polite goodbye → hang up with delay
-            if any(phrase in stripped for phrase in end_phrases):
-                logger.info(f"Customer end phrase: '{stripped[:50]}' — hanging up in 3s")
-                asyncio.create_task(_hang_up(3))
 
         except Exception as e:
             logger.error(f"Error in user speech committed handler: {e}")
