@@ -17,7 +17,7 @@ from livekit.agents.voice.room_io import RoomOptions
 from livekit.plugins import openai, deepgram, elevenlabs, sarvam
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-load_dotenv(".env")
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"), override=True)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("mia-dancing-cow")
@@ -249,6 +249,66 @@ async def _post_call(reason, session, ctx, phone_number, lead_data):
         logger.error(f"Webhook failed: {e}")
 
 
+# ── ENDING PHRASE DETECTOR ────────────────────────────────────────
+
+def _is_ending(text: str) -> bool:
+    text = text.strip()
+    end_phrases = [
+        "bye", "goodbye", "good bye", "okay bye", "ok bye",
+        "thanks for your time", "thank you for your time",
+        "have a great day", "have a wonderful day",
+        "take care", "talk to you soon",
+        "really appreciate your time",
+        "बाय", "बाय बाय", "ओके बाय", "अलविदा",
+        "धन्यवाद", "शुक्रिया", "ठीक है बाय", "थैंक यू",
+    ]
+    for phrase in end_phrases:
+        if text == phrase:
+            return True
+        if text.endswith(phrase):
+            return True
+    return False
+
+
+# ── DIRECT WEBHOOK (no transcript) ────────────────────────────────
+
+async def _post_call_direct(reason: str, ctx, phone_number, lead_data):
+    webhook_url = os.getenv("WEBHOOK_URL", "")
+    if not webhook_url:
+        return
+    outcome_map = {
+        "invalid_number": "Invalid_Number",
+        "no_answer": "Voice_mail",
+    }
+    payload = {
+        "phone": phone_number,
+        "room_name": ctx.room.name,
+        "call_id": lead_data.get("call_id", ctx.room.name),
+        "cafe_name": lead_data.get("cafe_name", ""),
+        "owner_name": lead_data.get("owner_name", ""),
+        "city": lead_data.get("city", ""),
+        "prospect_type": lead_data.get("prospect_type", ""),
+        "airtable_record_id": lead_data.get("airtable_record_id", ""),
+        "transcript": "",
+        "Call_outcome": outcome_map.get(reason, "Voice_mail"),
+        "sample_booked": False,
+        "ai_summary": "Call could not be connected.",
+        "key_objection": "",
+        "Scheduled_date": "",
+        "status": "COMPLETED",
+    }
+    try:
+        async with aiohttp.ClientSession() as http:
+            async with http.post(
+                webhook_url,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as r:
+                logger.info(f"Direct webhook sent → {r.status}")
+    except Exception as e:
+        logger.error(f"Direct webhook failed: {e}")
+
+
 # ── PROVIDER FACTORIES ────────────────────────────────────────────
 
 def build_stt():
@@ -287,11 +347,14 @@ def build_tts():
 
 
 def build_llm():
-    logger.info(f"LLM: {config.LLM_MODEL}")
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    # Log the key presence and the model we are calling
+    logger.info(f"LLM Init: Model={config.LLM_MODEL} | Key exists={bool(api_key)}")
+
     return openai.LLM(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=os.getenv("OPENROUTER_API_KEY"),
         model=config.LLM_MODEL,
+        api_key=api_key,
+        base_url="https://openrouter.ai/api/v1",
         temperature=config.LLM_TEMPERATURE,
     )
 
@@ -379,20 +442,11 @@ Only use these details if they have real values. Never say "Unknown" aloud.
         except Exception as e:
             logger.error(f"Error hanging up: {e}")
 
-    end_phrases = [
-        "have a wonderful day", "have a great day", "take care",
-        "goodbye", "good bye", "thank you for your time",
-        "thanks for your time", "talk to you soon", "really appreciate it",
-        "bye", "ok bye", "okay bye", "alvida", "theek hai bye",
-        "dhanyavaad", "shukriya", "accha theek hai", "bilkul theek hai",
-        "बाय", "ओके बाय", "अलविदा", "धन्यवाद", "शुक्रिया",
-        "ठीक है बाय", "बाय बाय", "थैंक यू",
-    ]
-
     # Hard exit signals — immediate hang-up, no goodbye
     EXIT_SIGNALS = [
         "not interested", "don't call", "remove my number",
         "bilkul nahi chahiye", "band karo",
+        "काट दो", "phone काट दो", "band kar do", "rakh do",
     ]
 
     def _extract_text(ev):
@@ -464,15 +518,10 @@ Only use these details if they have real values. Never say "Unknown" aloud.
     def on_agent_speech_committed(ev):
         try:
             _last_activity[0] = time.monotonic()
-            text = _extract_text(ev)
 
-            # State chaining — fires at the TOP before any other logic
-            asyncio.create_task(_handle_state_chain())
-
-            # Polite goodbye → hang up
-            if any(phrase in text for phrase in end_phrases):
-                logger.info(f"Agent end phrase: '{text[:50]}' — hanging up in 3s")
-                asyncio.create_task(_hang_up(3))
+            # State chaining — only during opening states
+            if agent_instance.state in ["greeting", "intro"]:
+                asyncio.create_task(_handle_state_chain())
 
         except Exception as e:
             logger.error(f"Error in agent speech committed handler: {e}")
@@ -495,7 +544,7 @@ Only use these details if they have real values. Never say "Unknown" aloud.
                 return
 
             # Polite goodbye → hang up with delay (before word count filter)
-            if any(phrase in stripped for phrase in end_phrases):
+            if _is_ending(stripped):
                 logger.info(f"Customer end phrase: '{stripped[:50]}' — hanging up in 3s")
                 asyncio.create_task(_hang_up(3))
                 return
@@ -541,13 +590,17 @@ Only use these details if they have real values. Never say "Unknown" aloud.
         nonlocal _post_call_fired
         if _post_call_fired:
             return
-        _post_call_fired = True
         if _silence_task:
             _silence_task.cancel()
         logger.info(f"Participant disconnected: {participant.identity}")
-        asyncio.create_task(
-            _post_call("participant_disconnected", session, ctx, phone_number, lead_data)
-        )
+
+        async def _delayed_post_call():
+            await asyncio.sleep(2)
+            if _post_call_fired:
+                return
+            await _post_call("participant_disconnected", session, ctx, phone_number, lead_data)
+
+        asyncio.create_task(_delayed_post_call())
 
     ctx.room.on("participant_disconnected", on_participant_disconnected)
 
@@ -589,7 +642,14 @@ Only use these details if they have real values. Never say "Unknown" aloud.
             logger.error(f"Call failed: {e}")
             if _silence_task:
                 _silence_task.cancel()
-            await _post_call("call_failed", session, ctx, phone_number, lead_data)
+            error_str = str(e).lower()
+            if "404" in error_str or "not found" in error_str:
+                logger.info("SIP 404 — Invalid number")
+                await _post_call_direct("invalid_number", ctx, phone_number, lead_data)
+            else:
+                logger.info("SIP error — marking as Voice_Mail")
+                await _post_call_direct("no_answer", ctx, phone_number, lead_data)
+            _post_call_fired = True
     else:
         logger.warning("No phone number in metadata. Skipping dial.")
 

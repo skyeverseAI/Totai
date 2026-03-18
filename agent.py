@@ -15,7 +15,7 @@ from livekit.agents import AgentSession, Agent, RoomInputOptions
 from livekit.plugins import openai, sarvam
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-load_dotenv(".env")
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("mia-dancing-cow")
