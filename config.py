@@ -55,8 +55,8 @@ SARVAM_TTS_LANGUAGE = "hi-IN"
 # ─────────────────────────────────────────────
 #  SILENCE MONITOR
 # ─────────────────────────────────────────────
-GREETING_GRACE_PERIOD_SECONDS = 15   # silence monitor waits this long after call starts
-SILENCE_THRESHOLD_SECONDS     = 20   # re-engage after this many seconds of silence
+GREETING_GRACE_PERIOD_SECONDS = 20   # silence monitor waits this long after call starts
+SILENCE_THRESHOLD_SECONDS     = 35   # re-engage after this many seconds of silence
 
 # ─────────────────────────────────────────────
 #  MIA — SYSTEM PROMPT
