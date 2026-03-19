@@ -32,6 +32,8 @@ class MiaAssistant(Agent):
         self._last_response_time: float = 0.0
         self._is_speaking: bool = False          # 🔒 speaking lock
         self.state: str = "greeting"             # greeting → intro → discovery → active
+        self._hangup_called: bool = False
+        self.conversion_stage: str = "none"      # none → interested → confirmed
 
     async def llm_node(self, chat_ctx, tools, model_settings):
 
@@ -55,7 +57,7 @@ class MiaAssistant(Agent):
                 now = time.monotonic()
                 if (last_user_msg and
                         last_user_msg == self._last_user_text and
-                        now - self._last_response_time < 5.0):
+                        now - self._last_response_time < 8.0):
                     logger.info(f"Duplicate user turn suppressed: '{last_user_msg[:40]}'")
                     return
 
@@ -416,8 +418,8 @@ Only use these details if they have real values. Never say "Unknown" aloud.
         turn_detection=MultilingualModel(),
         allow_interruptions=True,
         min_interruption_duration=0.5,
-        min_interruption_words=2,
-        min_endpointing_delay=0.4,
+        min_interruption_words=3,
+        min_endpointing_delay=0.7,
     )
 
     await session.start(
@@ -438,6 +440,27 @@ Only use these details if they have real values. Never say "Unknown" aloud.
             logger.info("Call ended by agent")
         except Exception as e:
             logger.error(f"Error hanging up: {e}")
+        # Wait for session to fully close before firing post-call
+        await asyncio.sleep(2)
+        if not _post_call_fired[0]:
+            _post_call_fired[0] = True
+            await _post_call("agent_hangup", session, ctx, phone_number, lead_data)
+
+    async def _complete_and_hangup():
+        if agent_instance._hangup_called:
+            return
+        agent_instance._hangup_called = True
+        logger.info("Conversion complete — closing call in 5s")
+        await asyncio.sleep(5)
+        try:
+            await ctx.api.room.delete_room(
+                api.DeleteRoomRequest(room=ctx.room.name)
+            )
+        except Exception as e:
+            logger.error(f"Hangup failed: {e}")
+        if not _post_call_fired[0]:
+            _post_call_fired[0] = True
+            await _post_call("call_completed", session, ctx, phone_number, lead_data)
 
     # Hard exit signals — immediate hang-up, no goodbye
     EXIT_SIGNALS = [
@@ -449,10 +472,23 @@ Only use these details if they have real values. Never say "Unknown" aloud.
     def _extract_text(ev):
         text = ""
         if hasattr(ev, 'content'):
-            if isinstance(ev.content, list):
-                text = " ".join([c if isinstance(c, str) else "" for c in ev.content])
-            else:
-                text = str(ev.content)
+            content = ev.content
+            if isinstance(content, str):
+                text = content
+            elif isinstance(content, list):
+                parts = []
+                for c in content:
+                    if isinstance(c, str):
+                        parts.append(c)
+                    elif hasattr(c, 'text'):
+                        parts.append(c.text)
+                    elif hasattr(c, 'content'):
+                        parts.append(str(c.content))
+                text = " ".join(parts)
+        elif hasattr(ev, 'text'):
+            text = ev.text or ""
+        elif hasattr(ev, 'transcript'):
+            text = ev.transcript or ""
         return text.lower()
 
     # ── STATE-CHAIN HELPER ─────────────────────────────────────────
@@ -512,22 +548,50 @@ Only use these details if they have real values. Never say "Unknown" aloud.
                 finally:
                     _silence_generating[0] = False
 
-    def on_agent_speech_committed(ev):
+    def on_conversation_item_added(ev):
         try:
             _last_activity[0] = time.monotonic()
 
-            # State chaining — only during opening states
-            if agent_instance.state in ["greeting", "intro"]:
-                asyncio.create_task(_handle_state_chain())
+            # Only process assistant messages
+            if not hasattr(ev, 'item') or ev.item.role != "assistant":
+                return
 
+            # Extract text from assistant message
+            content = ev.item.content
+            if isinstance(content, str):
+                text = content.lower()
+            elif isinstance(content, list):
+                text = " ".join([
+                    c if isinstance(c, str) else (c.text if hasattr(c, 'text') else "")
+                    for c in content
+                ]).lower()
+            else:
+                text = str(content).lower()
+
+            logger.info(f"Agent message — text: '{text[:80]}'")
+
+            # Agent said goodbye — hang up
+            if any(phrase in text for phrase in [
+                "thanks for your time", "really appreciate it", "take care", "bye"
+            ]):
+                if not agent_instance._hangup_called:
+                    agent_instance._hangup_called = True
+                    if _silence_task:
+                        _silence_task.cancel()
+                    logger.info(f"Agent goodbye — hanging up: '{text[:50]}'")
+                    asyncio.create_task(_hang_up(3))
         except Exception as e:
-            logger.error(f"Error in agent speech committed handler: {e}")
+            logger.error(f"Error in conversation_item_added handler: {e}")
 
     def on_user_speech_committed(ev):
         try:
             text = _extract_text(ev)
             stripped = text.strip()
             _last_activity[0] = time.monotonic()
+
+            # Chain next opening state after user responds
+            if agent_instance.state in ["greeting", "intro"]:
+                asyncio.create_task(_handle_state_chain())
 
             # 🔒 Don't process if agent is already speaking
             if agent_instance._is_speaking:
@@ -539,6 +603,34 @@ Only use these details if they have real values. Never say "Unknown" aloud.
                 logger.info(f"Exit signal: '{stripped[:50]}' — hanging up immediately")
                 asyncio.create_task(_hang_up(1))
                 return
+
+            # Stage 1 — Interest detected
+            INTEREST_SIGNALS = [
+                "we can try", "can try", "try kar", "try karenge",
+                "send it", "send the sample", "bhejo", "kar lenge",
+                "okay send", "yes send", "sure", "open to it",
+                "we are open", "open to trying", "interested",
+                "would like to try", "we'll try", "let's try",
+                "कर लेंगे", "भेजिए", "ठीक है", "हाँ",
+            ]
+            # Stage 2 — Address/logistics confirmed
+            ADDRESS_SIGNALS = [
+                "cafe address", "cafe only", "drop it", "cafe pe",
+                "send to cafe", "at the cafe", "our address",
+                "whatsapp", "whatsapp you", "whatsapp the details",
+                "find it on google", "google pe", "same number",
+                "this number", "send it here",
+                "काफे पर", "यहाँ भेजो", "address",
+            ]
+            if agent_instance.conversion_stage == "none":
+                if any(s in stripped for s in INTEREST_SIGNALS):
+                    agent_instance.conversion_stage = "interested"
+                    logger.info("Conversion stage: interested")
+            elif agent_instance.conversion_stage == "interested":
+                if any(s in stripped for s in ADDRESS_SIGNALS):
+                    agent_instance.conversion_stage = "confirmed"
+                    logger.info("Conversion stage: confirmed — triggering hangup")
+                    asyncio.create_task(_complete_and_hangup())
 
             # Polite goodbye → hang up with delay (before word count filter)
             if _is_ending(stripped):
@@ -566,7 +658,7 @@ Only use these details if they have real values. Never say "Unknown" aloud.
         except Exception as e:
             logger.error(f"Error in user speech committed handler: {e}")
 
-    session.on("agent_speech_committed", on_agent_speech_committed)
+    session.on("conversation_item_added", on_conversation_item_added)
     session.on("user_speech_committed", on_user_speech_committed)
 
     # ── END CALL: max duration (4 minutes) ────────────────────────
@@ -583,11 +675,10 @@ Only use these details if they have real values. Never say "Unknown" aloud.
     asyncio.create_task(enforce_max_duration())
 
     # ── POST CALL: fires when participant disconnects ──────────────
-    _post_call_fired = False
+    _post_call_fired = [False]
 
     def on_participant_disconnected(participant):
-        nonlocal _post_call_fired
-        if _post_call_fired:
+        if _post_call_fired[0]:
             return
         if _silence_task:
             _silence_task.cancel()
@@ -595,8 +686,9 @@ Only use these details if they have real values. Never say "Unknown" aloud.
 
         async def _delayed_post_call():
             await asyncio.sleep(2)
-            if _post_call_fired:
+            if _post_call_fired[0]:
                 return
+            _post_call_fired[0] = True
             await _post_call("participant_disconnected", session, ctx, phone_number, lead_data)
 
         asyncio.create_task(_delayed_post_call())
@@ -648,7 +740,7 @@ Only use these details if they have real values. Never say "Unknown" aloud.
             else:
                 logger.info("SIP error — marking as Voice_Mail")
                 await _post_call_direct("no_answer", ctx, phone_number, lead_data)
-            _post_call_fired = True
+            _post_call_fired[0] = True
     else:
         logger.warning("No phone number in metadata. Skipping dial.")
 
