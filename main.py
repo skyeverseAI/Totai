@@ -5,16 +5,13 @@ os.environ['SSL_CERT_FILE'] = certifi.where()
 import logging
 import json
 import asyncio
-import aiohttp
-import httpx
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from dotenv import load_dotenv
 
 from livekit import agents, api
-from livekit.agents import AgentSession, Agent, function_tool
+from livekit.agents import AgentSession
 from livekit.agents.voice.room_io import RoomOptions
-from livekit.plugins import openai, deepgram, elevenlabs, sarvam
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"), override=True)
@@ -24,70 +21,10 @@ logger = logging.getLogger("mia-dancing-cow")
 
 import config
 
-
-class MiaAssistant(Agent):
-    def __init__(self, prompt: str) -> None:
-        super().__init__(instructions=prompt)
-        self._last_user_text: str = ""
-        self._last_response_time: float = 0.0
-        self._is_speaking: bool = False          # 🔒 speaking lock
-        self.state: str = "greeting"             # greeting → intro → discovery → active
-        self._hangup_called: bool = False
-        self.conversion_stage: str = "none"      # none → interested → confirmed
-        self._captured_number = None
-
-    @function_tool
-    async def capture_owner_number(self, number: str) -> str:
-        """Call this when staff or someone provides the owner's or
-        manager's phone number to call instead."""
-        self._captured_number = number
-        logger.info(f"Captured owner number: {number}")
-        return f"Got it, I've noted the number {number}. I'll reach out to them directly."
-
-    async def llm_node(self, chat_ctx, tools, model_settings):
-
-        # 🔒 Block if already speaking
-        if self._is_speaking:
-            logger.info("Skipped llm_node: agent is already speaking")
-            return
-
-        self._is_speaking = True
-
-        try:
-            # Deduplicate: skip if same user message processed within 5 seconds
-            try:
-                msgs = chat_ctx.messages() if callable(chat_ctx.messages) else list(chat_ctx.messages)
-                last_user_msg = ""
-                for msg in reversed(msgs):
-                    if msg.role == "user":
-                        last_user_msg = str(msg.content) if msg.content else ""
-                        break
-
-                now = time.monotonic()
-                if (last_user_msg and
-                        last_user_msg == self._last_user_text and
-                        now - self._last_response_time < 8.0):
-                    logger.info(f"Duplicate user turn suppressed: '{last_user_msg[:40]}'")
-                    return
-
-                self._last_user_text = last_user_msg
-                self._last_response_time = now
-            except Exception as e:
-                logger.warning(f"Dedup check failed (non-critical): {e}")
-
-            # Stream LLM output to terminal in real-time
-            print("\n[LLM] ", end="", flush=True)
-            async for chunk in super().llm_node(chat_ctx, tools, model_settings):
-                try:
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        print(chunk.choices[0].delta.content, end="", flush=True)
-                except Exception:
-                    pass
-                yield chunk
-            print()  # newline after full response
-
-        finally:
-            self._is_speaking = False            # 🔒 always release lock
+from agent import MiaAssistant
+from providers import build_stt, build_tts, build_llm
+from postcall import _post_call, _post_call_direct
+from utils import _is_ending, _extract_text
 
 
 def _is_valid_date(date_str: str) -> bool:
@@ -96,276 +33,6 @@ def _is_valid_date(date_str: str) -> bool:
         return True
     except:
         return False
-
-
-async def _classify_outcome(transcript: str, groq_api_key: str, model: str) -> dict:
-    today = datetime.now().strftime('%Y-%m-%d')
-    tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
-
-    prompt = f"""
-You are analyzing a sales call transcript for Dancing Cow (Oatish oat milk).
-
-TRANSCRIPT:
-{transcript}
-
-Today's date: {today}
-
-CLASSIFICATION RULES:
-
-Hot_lead:
-- Prospect showed clear interest OR
-- Agreed to try/receive a sample OR
-- Asked for next steps
-
-sample_booked:
-- true ONLY if they explicitly agreed to receive or try a sample
-
-Warm_lead:
-- Some interest but no clear commitment
-
-Call_back:
-- Prospect asked to be contacted at a specific time or date
-
-Not_interested:
-- Clearly declined
-
-Voice_mail:
-- No human conversation
-
-Wrong_Number:
-- Wrong person
-
-SCHEDULED DATE RULES:
-- If prospect said "tomorrow" → use {tomorrow}
-- If prospect gave a specific date → convert to YYYY-MM-DD
-- If unclear (e.g., "next week", "later") → return empty string ""
-- If no callback requested → return empty string ""
-- NEVER return natural language dates
-
-STRICT OUTPUT FORMAT:
-Return ONLY this JSON:
-{{
-  "Call_outcome": "Hot_lead" | "Warm_lead" | "Call_back" | "Not_interested" | "Voice_mail" | "Wrong_Number",
-  "sample_booked": true | false,
-  "ai_summary": "2-3 sentence summary of the call",
-  "key_objection": "main objection raised or empty string",
-  "Scheduled_date": "YYYY-MM-DD or empty string"
-}}
-
-If unsure between Hot_lead and Warm_lead → choose Warm_lead.
-Return ONLY valid JSON. No explanation.
-"""
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {groq_api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0,
-                },
-                timeout=15
-            )
-            result = resp.json()
-            content = result["choices"][0]["message"]["content"].strip()
-            if "```" in content:
-                content = content.split("```")[1]
-                if content.startswith("json"):
-                    content = content[4:]
-            result = json.loads(content.strip())
-            # Validate Scheduled_date
-            if result.get("Scheduled_date") and not _is_valid_date(result["Scheduled_date"]):
-                result["Scheduled_date"] = ""
-            return result
-    except Exception as e:
-        logger.error(f"Outcome classification failed: {e}")
-        return {
-            "Call_outcome": "Not_interested",
-            "sample_booked": False,
-            "ai_summary": "",
-            "key_objection": "",
-            "Scheduled_date": ""
-        }
-
-
-async def _post_call(reason, session, ctx, phone_number, lead_data):
-    logger.info(f"Call ended. Reason: {reason}")
-
-    # Extract transcript
-    try:
-        history = session.history
-        transcript = "\n".join([
-            f"{m.role.upper()}: {m.content}"
-            for m in history.items
-            if hasattr(m, 'content') and m.content
-        ])
-    except Exception as e:
-        logger.error(f"Could not extract transcript: {e}")
-        transcript = ""
-
-    # If transcript is empty, likely voicemail or no answer
-    if not transcript.strip():
-        result = {
-            "Call_outcome": "Voice_mail",
-            "sample_booked": False,
-            "ai_summary": "No conversation recorded. Likely voicemail or no answer.",
-            "key_objection": "",
-            "Scheduled_date": ""
-        }
-    else:
-        result = await _classify_outcome(
-            transcript=transcript,
-            groq_api_key=os.getenv("GROQ_API_KEY", ""),
-            model=config.GROQ_MODEL,
-        )
-
-    logger.info(f"Outcome: {result.get('Call_outcome')} | Sample: {result.get('sample_booked')}")
-
-    webhook_url = os.getenv("WEBHOOK_URL", "")
-    if not webhook_url:
-        logger.warning("WEBHOOK_URL not set. Skipping post-call webhook.")
-        return
-
-    payload = {
-        "phone": phone_number,
-        "room_name": ctx.room.name,
-        "call_id": lead_data.get("call_id", ctx.room.name),
-        "cafe_name": lead_data.get("cafe_name", ""),
-        "owner_name": lead_data.get("owner_name", ""),
-        "city": lead_data.get("city", ""),
-        "prospect_type": lead_data.get("prospect_type", ""),
-        "airtable_record_id": lead_data.get("airtable_record_id", ""),
-        "transcript": transcript,
-        "Call_outcome": result.get("Call_outcome", "Not_interested"),
-        "sample_booked": result.get("sample_booked", False),
-        "ai_summary": result.get("ai_summary", ""),
-        "key_objection": result.get("key_objection", ""),
-        "Scheduled_date": result.get("Scheduled_date", ""),
-        "status": "COMPLETED",
-        "alternate_number": agent_instance._captured_number or "",
-    }
-
-    try:
-        async with aiohttp.ClientSession() as http:
-            async with http.post(
-                webhook_url,
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=10)
-            ) as r:
-                logger.info(f"Webhook sent → {r.status}")
-    except Exception as e:
-        logger.error(f"Webhook failed: {e}")
-
-
-# ── ENDING PHRASE DETECTOR ────────────────────────────────────────
-
-def _is_ending(text: str) -> bool:
-    text = text.strip()
-    end_phrases = [
-        "bye", "goodbye", "good bye", "okay bye", "ok bye",
-        "thanks for your time", "thank you for your time",
-        "have a great day", "have a wonderful day",
-        "take care", "talk to you soon",
-        "really appreciate your time",
-        "बाय", "बाय बाय", "ओके बाय", "अलविदा",
-        "धन्यवाद", "शुक्रिया", "ठीक है बाय", "थैंक यू",
-    ]
-    for phrase in end_phrases:
-        if text == phrase:
-            return True
-        if text.endswith(phrase):
-            return True
-    return False
-
-
-# ── DIRECT WEBHOOK (no transcript) ────────────────────────────────
-
-async def _post_call_direct(reason: str, ctx, phone_number, lead_data):
-    webhook_url = os.getenv("WEBHOOK_URL", "")
-    if not webhook_url:
-        return
-    outcome_map = {
-        "invalid_number": "Invalid_Number",
-        "no_answer": "Voice_mail",
-    }
-    payload = {
-        "phone": phone_number,
-        "room_name": ctx.room.name,
-        "call_id": lead_data.get("call_id", ctx.room.name),
-        "cafe_name": lead_data.get("cafe_name", ""),
-        "owner_name": lead_data.get("owner_name", ""),
-        "city": lead_data.get("city", ""),
-        "prospect_type": lead_data.get("prospect_type", ""),
-        "airtable_record_id": lead_data.get("airtable_record_id", ""),
-        "transcript": "",
-        "Call_outcome": outcome_map.get(reason, "Voice_mail"),
-        "sample_booked": False,
-        "ai_summary": "Call could not be connected.",
-        "key_objection": "",
-        "Scheduled_date": "",
-        "status": "COMPLETED",
-    }
-    try:
-        async with aiohttp.ClientSession() as http:
-            async with http.post(
-                webhook_url,
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=10)
-            ) as r:
-                logger.info(f"Direct webhook sent → {r.status}")
-    except Exception as e:
-        logger.error(f"Direct webhook failed: {e}")
-
-
-# ── PROVIDER FACTORIES ────────────────────────────────────────────
-
-def build_stt():
-    if config.STT_PROVIDER == "deepgram":
-        logger.info("STT: Deepgram nova-3")
-        return deepgram.STT(
-            model=config.DEEPGRAM_STT_MODEL,
-            language=config.DEEPGRAM_STT_LANGUAGE,
-            api_key=os.getenv("DEEPGRAM_API_KEY"),
-        )
-    else:
-        logger.info("STT: Sarvam saaras:v3")
-        return sarvam.STT(
-            model=config.SARVAM_STT_MODEL,
-            language=config.SARVAM_STT_LANGUAGE,
-            api_key=os.getenv("SARVAM_API_KEY"),
-            high_vad_sensitivity=False,
-        )
-
-
-def build_tts():
-    if config.TTS_PROVIDER == "elevenlabs":
-        logger.info(f"TTS: ElevenLabs {config.ELEVENLABS_MODEL}")
-        return elevenlabs.TTS(
-            voice_id=config.ELEVENLABS_VOICE_ID,
-            model=config.ELEVENLABS_MODEL,
-            api_key=os.getenv("ELEVEN_API_KEY"),
-        )
-    else:
-        logger.info("TTS: Sarvam bulbul:v3")
-        return sarvam.TTS(
-            model=config.SARVAM_TTS_MODEL,
-            speaker=config.SARVAM_TTS_VOICE,
-            target_language_code=config.SARVAM_TTS_LANGUAGE,
-        )
-
-
-def build_llm():
-    logger.info(f"LLM: {config.LLM_PROVIDER} | {config.LLM_MODEL}")
-    return openai.LLM(
-        model=config.LLM_MODEL,
-        api_key=config.LLM_API_KEY,
-        base_url=config.LLM_BASE_URL,
-        temperature=config.LLM_TEMPERATURE,
-    )
 
 
 async def entrypoint(ctx: agents.JobContext):
@@ -444,12 +111,18 @@ Only use these details if they have real values. Never say "Unknown" aloud.
         ),
     )
 
+    async def _shutdown_post_call():
+        if not _post_call_fired[0]:
+            _post_call_fired[0] = True
+            await _post_call("agent_hangup", session, ctx, phone_number, lead_data, agent_instance)
+    ctx.add_shutdown_callback(_shutdown_post_call)
+
     # ── END CALL: detect goodbye phrases ──────────────────────────
     async def _hang_up(delay: int = 3):
         await asyncio.sleep(delay)
         if not _post_call_fired[0]:
             _post_call_fired[0] = True
-            await _post_call("agent_hangup", session, ctx, phone_number, lead_data)
+            await _post_call("agent_hangup", session, ctx, phone_number, lead_data, agent_instance)
         try:
             await ctx.api.room.delete_room(
                 api.DeleteRoomRequest(room=ctx.room.name)
@@ -472,7 +145,7 @@ Only use these details if they have real values. Never say "Unknown" aloud.
             logger.error(f"Hangup failed: {e}")
         if not _post_call_fired[0]:
             _post_call_fired[0] = True
-            await _post_call("call_completed", session, ctx, phone_number, lead_data)
+            await _post_call("call_completed", session, ctx, phone_number, lead_data, agent_instance)
 
     # Hard exit signals — immediate hang-up, no goodbye
     EXIT_SIGNALS = [
@@ -480,28 +153,6 @@ Only use these details if they have real values. Never say "Unknown" aloud.
         "bilkul nahi chahiye", "band karo",
         "काट दो", "phone काट दो", "band kar do", "rakh do",
     ]
-
-    def _extract_text(ev):
-        text = ""
-        if hasattr(ev, 'content'):
-            content = ev.content
-            if isinstance(content, str):
-                text = content
-            elif isinstance(content, list):
-                parts = []
-                for c in content:
-                    if isinstance(c, str):
-                        parts.append(c)
-                    elif hasattr(c, 'text'):
-                        parts.append(c.text)
-                    elif hasattr(c, 'content'):
-                        parts.append(str(c.content))
-                text = " ".join(parts)
-        elif hasattr(ev, 'text'):
-            text = ev.text or ""
-        elif hasattr(ev, 'transcript'):
-            text = ev.transcript or ""
-        return text.lower()
 
     # ── STATE-CHAIN HELPER ─────────────────────────────────────────
     async def _handle_state_chain():
@@ -591,7 +242,7 @@ Only use these details if they have real values. Never say "Unknown" aloud.
                     if _silence_task:
                         _silence_task.cancel()
                     logger.info(f"Agent goodbye — hanging up: '{text[:50]}'")
-                    asyncio.create_task(_hang_up(3))
+                    asyncio.ensure_future(_hang_up(3))
         except Exception as e:
             logger.error(f"Error in conversation_item_added handler: {e}")
 
@@ -613,7 +264,7 @@ Only use these details if they have real values. Never say "Unknown" aloud.
             # Hard exit signals → immediate hang-up (before word count filter)
             if any(signal in stripped for signal in EXIT_SIGNALS):
                 logger.info(f"Exit signal: '{stripped[:50]}' — hanging up immediately")
-                asyncio.create_task(_hang_up(1))
+                asyncio.ensure_future(_hang_up(1))
                 return
 
             # Stage 1 — Interest detected
@@ -649,7 +300,7 @@ Only use these details if they have real values. Never say "Unknown" aloud.
                 logger.info(f"Customer end phrase: '{stripped[:50]}' — hanging up in 3s")
                 if _silence_task:
                     _silence_task.cancel()
-                asyncio.create_task(_hang_up(3))
+                asyncio.ensure_future(_hang_up(3))
                 return
 
             # User interrupted opening — jump straight to active mode
@@ -701,7 +352,7 @@ Only use these details if they have real values. Never say "Unknown" aloud.
             if _post_call_fired[0]:
                 return
             _post_call_fired[0] = True
-            await _post_call("participant_disconnected", session, ctx, phone_number, lead_data)
+            await _post_call("participant_disconnected", session, ctx, phone_number, lead_data, agent_instance)
 
         asyncio.create_task(_delayed_post_call())
 

@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 from livekit import agents, api
-from livekit.agents import AgentSession, Agent, function_tool
+from livekit.agents import AgentSession, Agent
 from livekit.agents.voice.room_io import RoomOptions
 from livekit.plugins import openai, deepgram, elevenlabs, sarvam
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
@@ -34,15 +34,6 @@ class MiaAssistant(Agent):
         self.state: str = "greeting"             # greeting → intro → discovery → active
         self._hangup_called: bool = False
         self.conversion_stage: str = "none"      # none → interested → confirmed
-        self._captured_number = None
-
-    @function_tool
-    async def capture_owner_number(self, number: str) -> str:
-        """Call this when staff or someone provides the owner's or
-        manager's phone number to call instead."""
-        self._captured_number = number
-        logger.info(f"Captured owner number: {number}")
-        return f"Got it, I've noted the number {number}. I'll reach out to them directly."
 
     async def llm_node(self, chat_ctx, tools, model_settings):
 
@@ -246,7 +237,6 @@ async def _post_call(reason, session, ctx, phone_number, lead_data):
         "key_objection": result.get("key_objection", ""),
         "Scheduled_date": result.get("Scheduled_date", ""),
         "status": "COMPLETED",
-        "alternate_number": agent_instance._captured_number or "",
     }
 
     try:
@@ -416,10 +406,6 @@ Only use these details if they have real values. Never say "Unknown" aloud.
     dynamic_prompt = config.SYSTEM_PROMPT.replace(
         "PROSPECT_CONTEXT_PLACEHOLDER", context_block
     )
-    gender_form = "रही" if config.AGENT_GENDER == "female" else "रहा"
-    dynamic_prompt = dynamic_prompt.replace(
-        "AGENT_GENDER_PLACEHOLDER", gender_form
-    )
 
     # Create agent instance — stored so silence monitor can check _is_speaking
     agent_instance = MiaAssistant(prompt=dynamic_prompt)
@@ -447,9 +433,6 @@ Only use these details if they have real values. Never say "Unknown" aloud.
     # ── END CALL: detect goodbye phrases ──────────────────────────
     async def _hang_up(delay: int = 3):
         await asyncio.sleep(delay)
-        if not _post_call_fired[0]:
-            _post_call_fired[0] = True
-            await _post_call("agent_hangup", session, ctx, phone_number, lead_data)
         try:
             await ctx.api.room.delete_room(
                 api.DeleteRoomRequest(room=ctx.room.name)
@@ -457,6 +440,11 @@ Only use these details if they have real values. Never say "Unknown" aloud.
             logger.info("Call ended by agent")
         except Exception as e:
             logger.error(f"Error hanging up: {e}")
+        # Wait for session to fully close before firing post-call
+        await asyncio.sleep(2)
+        if not _post_call_fired[0]:
+            _post_call_fired[0] = True
+            await _post_call("agent_hangup", session, ctx, phone_number, lead_data)
 
     async def _complete_and_hangup():
         if agent_instance._hangup_called:
